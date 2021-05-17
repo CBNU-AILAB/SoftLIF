@@ -5,7 +5,8 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.models as models
+
+import models
 
 
 def validate(val_loader, model, criterion):
@@ -27,10 +28,10 @@ def validate(val_loader, model, criterion):
         total_loss += loss.cpu().detach().numpy() * images.size(0)
         total_images += images.size(0)
 
-    test_acc = num_corrects.float() / total_images
-    test_loss = total_loss / total_images
+    val_acc = num_corrects.float() / total_images
+    val_loss = total_loss / total_images
 
-    return test_acc, test_loss
+    return val_acc, val_loss
 
 
 def train(train_loader, model, criterion, optimizer):
@@ -61,15 +62,16 @@ def train(train_loader, model, criterion, optimizer):
 
     return train_acc, train_loss
 
+
 def app(opt):
+    print(opt)
+
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.CIFAR10(
             opt.data,
             train=True,
-            download=True,
             transform=torchvision.transforms.Compose([
-                torchvision.transforms.RandomCrop(32, padding=4),
-                torchvision.transforms.RandomHorizontalFlip(),
+                torchvision.transforms.RandomCrop(24),
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))])),
         batch_size=opt.batch_size,
@@ -81,12 +83,13 @@ def app(opt):
             opt.data,
             train=False,
             transform=torchvision.transforms.Compose([
+                torchvision.transforms.CenterCrop(24),
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))])),
         batch_size=opt.batch_size,
         num_workers=opt.num_workers)
 
-    model = models.alexnet()
+    model = models.alexnet(num_classes=opt.num_classes)
     model.cuda()
 
     criterion = nn.CrossEntropyLoss()
@@ -107,17 +110,17 @@ def app(opt):
         end = time.time()
         print('total time: {:.2f}s - epoch: {} - accuracy: {} - loss: {}'.format(end-start, epoch, train_acc, train_loss))
 
-        test_acc, test_loss = validate(val_loader, model, criterion)
+        val_acc, val_loss = validate(val_loader, model, criterion)
 
-        if opt.save and test_acc > best_acc:
-            best_acc = test_acc
+        if val_acc > best_acc:
+            best_acc = val_acc
             state = {
                 'epoch': epoch,
                 'model': model.state_dict(),
                 'best_acc': best_acc,
                 'optimizer': optimizer.state_dict()}
             torch.save(state, opt.pretrained)
-            print('in test, epoch: {} - best accuracy: {} - loss: {}'.format(epoch, best_acc, test_loss))
+            print('in test, epoch: {} - best accuracy: {} - loss: {}'.format(epoch, best_acc, val_loss))
 
         lr_scheduler.step()
 
@@ -126,6 +129,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--data', default='data')
+    parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--num_epochs', default=120, type=int)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--num_workers', default=8, type=int)
